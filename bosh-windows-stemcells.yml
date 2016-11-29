@@ -141,6 +141,42 @@ resources:
       - {name: "state", values: ["available"]}
       owners:
       - amazon
+- name: windows-2016-ami-eu-west-1
+  type: ami-resource
+  source:
+    access_key_id: {{BOSH_CONCOURSE_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_CONCOURSE_SECRET_ACCESS_KEY}}
+    region: eu-west-1
+    search_options:
+      filters:
+      - {name: "name", values: ["Windows_Server-2016-English-Full-Base-*"]}
+      - {name: "state", values: ["available"]}
+      owners:
+      - amazon
+- name: windows-2016-ami-us-east-1
+  type: ami-resource
+  source:
+    access_key_id: {{BOSH_CONCOURSE_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_CONCOURSE_SECRET_ACCESS_KEY}}
+    region: us-east-1
+    search_options:
+      filters:
+      - {name: "name", values: ["Windows_Server-2016-English-Full-Base-*"]}
+      - {name: "state", values: ["available"]}
+      owners:
+      - amazon
+- name: windows-2016-ami-us-west-2
+  type: ami-resource
+  source:
+    access_key_id: {{BOSH_CONCOURSE_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_CONCOURSE_SECRET_ACCESS_KEY}}
+    region: us-west-2
+    search_options:
+      filters:
+      - {name: "name", values: ["Windows_Server-2016-English-Full-Base-*"]}
+      - {name: "state", values: ["available"]}
+      owners:
+      - amazon
 - name: bosh-aws-stemcell-version
   type: semver
   source:
@@ -258,6 +294,68 @@ jobs:
   - put: windows-updates-list
     params:
       file: updates-list/*.csv
+- name: create-aws-stemcell-2016
+  plan:
+  - aggregate:
+    - get: ci
+    - get: windows-2016-ami-eu-west-1
+    - get: windows-2016-ami-us-east-1
+    - get: windows-2016-ami-us-west-2
+    - get: stemcell-builder
+    - get: bosh-agent
+      passed: [compile-and-push]
+    - put: version
+      resource: bosh-aws-stemcell-version
+      params:
+        bump: patch
+    - get: bosh-agent-zip
+      passed: [compile-and-push]
+      trigger: true
+    - get: bosh-agent-deps-zip
+    - get: bwats
+  - task: agent-sha
+    config:
+      platform: linux
+      image_resource: {type: docker-image, source: {repository: concourse/git-resource } }
+      inputs:
+      - name: bosh-agent
+      outputs:
+      - name: bosh-agent-sha
+      run:
+        path: bash
+        args: ["-c","git --git-dir bosh-agent/.git rev-parse HEAD > bosh-agent-sha/sha"]
+  - task: collect-amis
+    file: ci/tasks/collect-stemcell-region-amis.yml
+    input_mapping:
+      windows-ami-eu-west-1: windows-2016-ami-eu-west-1
+      windows-ami-us-east-1: windows-2016-ami-us-east-1
+      windows-ami-us-west-2: windows-2016-ami-us-west-2
+    params:
+      VPC_ID_EU_WEST_1: vpc-944df7f1
+      SUBNET_ID_EU_WEST_1: subnet-0978c850
+      VPC_ID_US_EAST_1: vpc-3e38385b
+      SUBNET_ID_US_EAST_1: subnet-110fae67
+      VPC_ID_US_WEST_2: vpc-fddc4a98
+      SUBNET_ID_US_WEST_2: subnet-b46de0c3
+  - task: create-stemcell
+    file: stemcell-builder/tasks/create-aws-stemcell.yml
+    params:
+      OUTPUT_DIR: bosh-windows-stemcell
+      OS_VERSION: windows2016
+      AWS_ACCESS_KEY: {{BOSH_CONCOURSE_ACCESS_KEY_ID}}
+      AWS_SECRET_KEY: {{BOSH_CONCOURSE_SECRET_ACCESS_KEY}}
+  # - task: test-stemcell
+  #   file: bwats/concourse.yml
+  #   params:
+  #     BOSH_PASSWORD: {{AWS_BOSH_PASSWORD}}
+  #     BOSH_USER: {{AWS_BOSH_USER}}
+  #     DIRECTOR_IP: 52.1.65.226:25555
+  #     DIRECTOR_UUID: 5c99d18a-8615-4b1f-bb5a-268b798db37a
+  #     STEMCELL_NAME: bosh-aws-xen-hvm-windows-stemcell-go_agent
+  #     STEMCELL_PATH: bosh-windows-stemcell/light-bosh-stemcell-*-aws-xen-hvm-windows2012R2-go_agent.tgz
+  # - put: bosh-aws-stemcell
+  #   params:
+  #     file: bosh-windows-stemcell/light-bosh-stemcell-*-aws-xen-hvm-windows2012R2-go_agent.tgz
 - name: create-aws-stemcell
   plan:
   - aggregate:
