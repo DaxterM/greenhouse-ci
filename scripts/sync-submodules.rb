@@ -1,24 +1,6 @@
 #!/usr/bin/env ruby
 
-def sh(cmd)
-  puts cmd
-  system(cmd) || exit(1)
-end
-
-def submodules_changed?
-  !system("git diff --exit-code")
-end
-
-def trust_github
-  system("mkdir ~/.ssh")
-  system("ssh-keyscan github.com >> ~/.ssh/known_hosts")
-end
-
-def find_sha(release, submodule)
-  Dir.chdir(release) do
-    `git rev-parse :#{submodule}`.chomp
-  end
-end
+require_relative "./submodule-utils.rb"
 
 def bump_downstream(submodule, sha)
   Dir.chdir("downstream-release") do
@@ -31,27 +13,21 @@ end
 
 SUBMODULES = ENV.fetch("SUBMODULES").split(",")
 SUBMODULES.each do |submodule|
-  downstream_sha = find_sha("downstream-release", submodule)
-  upstream_sha = find_sha("upstream-release", submodule)
+  downstream_sha = Utils.find_sha("downstream-release", submodule)
+  upstream_sha = Utils.find_sha("upstream-release", submodule)
   if upstream_sha !=  downstream_sha
     bump_downstream(submodule, upstream_sha)
   end
 end
-trust_github
+Utils.trust_github
 Dir.chdir("downstream-release") do
-  puts "----- Set git identity"
-  sh 'git config user.email "cf-netgarden-eng@pivotal.io"'
-  sh 'git config user.name "CI (Automated)"'
-
+  Utils.git_config
   puts "----- Updating submodules"
-  if submodules_changed?
-    sh 'git add -A'
-    sh %{git diff --cached --submodule | ruby -e "puts 'Bump submodules'; puts; puts STDIN.read" | git commit --file -}
-    puts "----- DEBUG: show the commit we just created"
-    sh 'git --no-pager show HEAD'
+  if Utils.submodules_changed?
+    Utils.commit
   else
     puts "----- Nothing to commit"
   end
 end
 
-sh 'git clone ./downstream-release ./bumped-downstream-release'
+Utils.sh 'git clone ./downstream-release ./bumped-downstream-release'

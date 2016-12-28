@@ -1,0 +1,37 @@
+resources:
+- name: ironframe
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/cloudfoundry/ironframe.git
+- name: garden-windows
+  type: git
+  source:
+    branch: some-branch
+    uri: git@github.com:cloudfoundry/garden-windows-release.git
+    private_key: {{CLOUDFOUNDRY_GARDEN-WINDOWS-RELEASE_DEPLOY_KEY}}
+- name: ci
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/cloudfoundry-incubator/greenhouse-ci.git
+jobs:
+- name: ironframe-unit
+  serial: true
+  plan:
+  - aggregate:
+    - get: ironframe
+      trigger: true
+    - get: ci
+    - get: garden-windows
+  - task: unit-test
+    file: ci/tasks/ironframe-unit.yml
+  - task: bump-ironframe-submodule
+    file: ci/tasks/bump-submodule.yml
+    input_mapping:
+      repo: garden-windows
+      submodule: ironframe
+    params:
+      SUBMODULE: "Containerizer/IronFrame"
+  - put: garden-windows
+    params: { repository: bumped-repo }

@@ -1,5 +1,7 @@
-$Error.Clear()
+$ErrorActionPreference = "Stop";
+trap { $host.SetShouldExit(1) }
 
+$Error.Clear()
 Configuration CFWindows {
   Node "localhost" {
 
@@ -20,7 +22,7 @@ if ($Error) {
   {
     Write-Host $ErrorMessage
   }
-  Write-Host "Setup failed. The above errors occurred."
+  Write-Error "Setup failed. The above errors occurred."
 } else {
   Write-Host "Setup completed successfully."
 }
