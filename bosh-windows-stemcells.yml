@@ -18,7 +18,7 @@ resources:
     key: versions/stemcells-major-version
     access_key_id: {{BOSH_WINDOWS_BOSH_CI_S3_ACCESS_KEY_ID}}
     secret_access_key: {{BOSH_WINDOWS_BOSH_CI_S3_SECRET_ACCESS_KEY}}
-    initial_version: 1000.0.0
+    initial_version: 1004.0.0
 - name: bosh-agent
   type: git
   source:
@@ -150,10 +150,22 @@ jobs:
   plan:
   - aggregate:
     - get: bosh-agent
-    - put: version
+    - get: version
       resource: bosh-windows-stemcells-major-version
       params:
         bump: major
+  - put: bosh-windows-stemcells-major-version
+    params:
+      file: version/number
+  - put: bosh-vsphere-stemcell-version
+    params:
+      file: version/number
+  - put: bosh-aws-stemcell-version
+    params:
+      file: version/number
+  - put: bosh-gcp-stemcell-version
+    params:
+      file: version/number
 - name: create-vsphere-stemcell
   serial: true
   plan:
