@@ -1,0 +1,45 @@
+resources:
+- name: cf-deployment
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/cloudfoundry/cf-deployment.git
+- name: greenhouse-private
+  type: git
+  source:
+    branch: mulgore
+    private_key: {{GREENHOUSE_CI_GITHUB_PRIVATE_KEY}}
+    uri: git@github.com:pivotal-cf/greenhouse-private
+- name: ci
+  type: git
+  source:
+    branch: greenhouse-pipeline
+    uri: https://github.com/cloudfoundry-incubator/greenhouse-ci.git
+- name: vsphere-windows-stemcell
+  type: s3
+  source:
+    bucket: bosh-windows-stemcells
+    regexp: bosh-stemcell-(.*)-vsphere-esxi-windows2012R2-go_agent.tgz
+    access_key_id: {{BOSH_WINDOWS_S3_ADMIN_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_WINDOWS_S3_ADMIN_SECRET_ACCESS_KEY}}
+
+jobs:
+- name: mulgore-deploy-cf
+  serial: true
+  plan:
+  - aggregate:
+    - get: cf-deployment
+      trigger: true
+    - get: greenhouse-private
+    - get: ci
+    - get: vsphere-windows-stemcell
+      trigger: true
+  - task: deploy-cf
+    file: ci/tasks/cf-deployment-with-windows.yml
+    params:
+      ENVIRONMENT: mulgore
+    on_failure:
+      task: cleanup-deployment
+      file: ci/tasks/cleanup-cf-deployment.yml
+  - task: save stuff
+
