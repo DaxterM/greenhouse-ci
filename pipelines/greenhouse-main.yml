@@ -20,8 +20,6 @@ resources:
   source:
     bucket: bosh-windows-stemcells
     regexp: bosh-stemcell-(.*)-vsphere-esxi-windows2012R2-go_agent.tgz
-    access_key_id: {{BOSH_WINDOWS_S3_ADMIN_ACCESS_KEY_ID}}
-    secret_access_key: {{BOSH_WINDOWS_S3_ADMIN_SECRET_ACCESS_KEY}}
 
 jobs:
 - name: mulgore-deploy-cf
@@ -35,11 +33,26 @@ jobs:
     - get: vsphere-windows-stemcell
       trigger: true
   - task: deploy-cf
+    tags: [vsphere]
     file: ci/tasks/cf-deployment-with-windows.yml
     params:
       ENVIRONMENT: mulgore
+      BOSH_CLIENT: {{MULGORE_BOSH_CLIENT}}
+      BOSH_CLIENT_SECRET: {{MULGORE_BOSH_CLIENT_SECRET}}
+      BOSH_ENVIRONMENT: {{MULGORE_BOSH_ENVIRONMENT}}
+      BOSH_CA_CERT: {{MULGORE_BOSH_CA_CERT}}
     on_failure:
       task: cleanup-deployment
+      tags: [vsphere]
       file: ci/tasks/cleanup-cf-deployment.yml
-  - task: save stuff
-
+      params:
+        ENVIRONMENT: mulgore
+        BOSH_CLIENT: {{MULGORE_BOSH_CLIENT}}
+        BOSH_CLIENT_SECRET: {{MULGORE_BOSH_CLIENT_SECRET}}
+        BOSH_ENVIRONMENT: {{MULGORE_BOSH_ENVIRONMENT}}
+        BOSH_CA_CERT: {{MULGORE_BOSH_CA_CERT}}
+  - task: save-cf-vars
+    file: ci/tasks/save-cf-vars.yml
+    params:
+      ENVIRONMENT: mulgore
+      GITHUB_SSH_KEY: {{GREENHOUSE_CI_GITHUB_PRIVATE_KEY}}
