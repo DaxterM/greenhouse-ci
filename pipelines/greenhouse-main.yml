@@ -32,6 +32,7 @@ jobs:
     - get: ci
     - get: vsphere-windows-stemcell
       trigger: true
+      tags: [vsphere]
   - task: deploy-cf
     tags: [vsphere]
     file: ci/tasks/cf-deployment-with-windows.yml
