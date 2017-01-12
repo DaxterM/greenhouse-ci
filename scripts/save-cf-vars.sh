@@ -11,9 +11,11 @@ set -x
 
 cp cf-vars/vars.yml greenhouse-private/$ENVIRONMENT/cf/
 pushd greenhouse-private/$ENVIRONMENT/cf >/dev/null
-  git config user.email "pivotal-netgarden-eng@pivotal.io"
-  git config user.name "CI (Automated)"
-	git add vars.yml
-	git commit -m "Update cf-vars for $ENVIRONMENT"
-	git push
+  if ! git diff --exit-code; then
+    git config user.email "pivotal-netgarden-eng@pivotal.io"
+    git config user.name "CI (Automated)"
+    git add vars.yml
+    git commit -m "Update cf-vars for $ENVIRONMENT"
+    git push
+  fi
 popd >/dev/null
