@@ -1,0 +1,109 @@
+resources:
+- name: ci
+  type: git
+  source:
+    branch: transform-vsphere-iso
+    uri: https://github.com/cloudfoundry-incubator/greenhouse-ci.git
+- name: bosh-agent
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/cloudfoundry/bosh-agent.git
+- name: stemcell-builder
+  type: git
+  source:
+    branch: vsphere-iso-transform
+    uri: https://github.com/cloudfoundry-incubator/bosh-windows-stemcell-builder.git
+- name: windows-stemcell-dependencies
+  type: git
+  source:
+    branch: master
+    uri: git@github.com:pivotal-cf/windows-stemcell-dependencies.git
+    private_key: {{PIVOTAL-CF_WINDOWS-STEMCELL-DEPENDENCIES_PRIVATE_KEY}}
+- name: base-iso
+  type: s3
+  source:
+    bucket: windows-bosh-private
+    regexp: windows-(.*).iso
+    access_key_id: {{BOSH_WINDOWS_BOSH_CI_S3_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_WINDOWS_BOSH_CI_S3_SECRET_ACCESS_KEY}}
+- name: bosh-vsphere-stemcell-version
+  type: semver
+  source:
+    bucket: windows-bosh-temp
+    key: versions/vsphere-stemcell-version
+    access_key_id: {{BOSH_WINDOWS_BOSH_CI_S3_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_WINDOWS_BOSH_CI_S3_SECRET_ACCESS_KEY}}
+    initial_version: 1000.0.0
+- name: bosh-vsphere-stemcell
+  type: s3
+  source:
+    bucket: windows-bosh-temp
+    regexp: bosh-stemcell-(.*)-vsphere-esxi-windows2012R2-go_agent.tgz
+    access_key_id: {{BOSH_WINDOWS_BOSH_CI_S3_ACCESS_KEY_ID}}
+    secret_access_key: {{BOSH_WINDOWS_BOSH_CI_S3_SECRET_ACCESS_KEY}}
+
+jobs:
+- name: create-vsphere-stemcell
+  serial: true
+  plan:
+  - aggregate:
+    - get: ci
+    - get: bosh-agent
+    - get: stemcell-builder
+    - get: windows-stemcell-dependencies
+      tags: [vsphere-windows]
+    - get: base-iso
+      tags: [vsphere-windows]
+    - put: version
+      resource: bosh-vsphere-stemcell-version
+      params:
+        pre: build
+  - task: compile-bosh-agent
+    file: ci/tasks/compile-bosh-agent.yml
+    tags: [vsphere-windows]
+  - task: create-vsphere-stemcell
+    privileged: true
+    file: stemcell-builder/tasks/create-vsphere-stemcell.yml
+    tags: [vsphere-windows]
+    params:
+      OUTPUT_DIR: bosh-windows-stemcell
+      ISO_CHECKSUM_TYPE: "md5"
+      ISO_CHECKSUM: "5b5e08c490ad16b59b1d9fab0def883a"
+      MEMSIZE: "8192"
+      NUMVCPUS: "6"
+      REMOTE_HOST: {{ESXI_REMOTE_ADDRESS}}
+      REMOTE_PORT: "22"
+      REMOTE_DATASTORE: "578921d3-1b48ca03-9708-02505600004b"
+      REMOTE_CACHE_DATASTORE: "578921d3-1b48ca03-9708-02505600004b"
+      REMOTE_CACHE_DIRECTORY: "packer-cache"
+      REMOTE_USERNAME: {{ESXI_REMOTE_USER}}
+      REMOTE_PASSWORD: {{ESXI_REMOTE_PASSWORD}}
+      ADMINISTRATOR_PASSWORD: {{WINDOWS_PASSWORD}}
+      GUEST_NETWORK_ADDRESS: "10.85.58.10"
+      GUEST_NETWORK_MASK: "255.255.255.0"
+      GUEST_NETWORK_GATEWAY: "10.85.58.1"
+    ensure:
+      task: cleanup-vsphere
+      file: ci/tasks/cleanup-vsphere.yml
+      tags: [vsphere-windows]
+      params:
+        REMOTE_HOST: {{ESXI_REMOTE_ADDRESS}}
+        REMOTE_USERNAME: {{ESXI_REMOTE_USER}}
+        REMOTE_PASSWORD: {{ESXI_REMOTE_PASSWORD}}
+        REMOTE_DATASTORE: "578921d3-1b48ca03-9708-02505600004b"
+  - put: version
+    resource: bosh-vsphere-stemcell-version
+    params:
+      bump: final
+  - task: set-stemcell-version
+    tags: [vsphere-windows]
+    file: ci/tasks/set-stemcell-version.yml
+  - put: bosh-vsphere-stemcell
+    tags: [vsphere-windows]
+    params:
+      file: final-stemcell/bosh-stemcell-*-vsphere-esxi-windows2012R2-go_agent.tgz
+  - put: version
+    resource: bosh-vsphere-stemcell-version
+    params:
+      bump: minor
