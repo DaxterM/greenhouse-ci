@@ -11,6 +11,18 @@ resources:
   source:
     branch: master
     uri: https://github.com/greenhouse-org/bsdtar.git
+- name: bosh-agent
+  type: git
+  source:
+    branch: master
+    uri: git@github.com:greenhouse-org/bosh-agent.git
+    access_token: {{GREENHOUSE_CI_ACCESS_TOKEN}}
+- name: windows_app_lifecycle
+  type: git
+  source:
+    branch: master
+    uri: git@github.com:greenhouse-org/windows_app_lifecycle.git
+    access_token: {{GREENHOUSE_CI_ACCESS_TOKEN}}
 
 resource_types: []
 
@@ -36,3 +48,32 @@ jobs:
   - put: s3-bucket
     params:
       file: tar-output/tar-*.exe
+
+- name: windows-app-lifecycle-update-tar
+  serial: true
+  plan:
+  - aggregate:
+    - get: windows_app_lifecycle
+    - get: s3-bucket
+      trigger: true
+  - task: update-tar
+    file: ci/tasks/update-tar
+    params:
+      PATH: Builder/Resources/bsdtar.exe
+    input_mapping:
+      repo: windows_app_lifecycle
+    output_mapping:
+      updated_repo: updated_windows_app_lifecycle
+  - task: update-tar
+    file: ci/tasks/update-tar
+    params:
+      PATH: Builder.Tests/Resources/bsdtar.exe
+    input_mapping:
+      repo: updated_windows_app_lifecycle
+  - task: commit
+    file: ci/tasks/update-tar
+    params:
+      MESSAGE: "Update bsdtar.exe"
+    input_mapping:
+      repo: updated_repo
+  - put: 
