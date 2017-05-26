@@ -278,250 +278,76 @@ jobs:
       acquire: true
   - do:
     - aggregate:
-      - get: cf-release
+      - get: cf-deployment
         trigger: true
-      - get: diego-github-release
+      - get: gcp-windows-stemcell
+      - get: gcp-linux-stemcell
+      - get: wats-develop
         trigger: true
-        params:
-          include_source_tarball: true
-      - get: greenhouse-private
-      - get: greenhouse-ci
-      - get: aws-stemcell
-    - task: create-cf-release
-      file: greenhouse-ci/tasks/create-cf-release.yml
-    - task: generate-manifest
-      file: greenhouse-ci/tasks/generate-manifest.yml
+      - get: wats-master
+      - get: version
+        params: {pre: rc}
+    - aggregate:
+      - task: create-release
+        file: ci/bosh-cr/task.yml
+        input_mapping: { release: garden-windows-bosh-release-develop }
+    - put: pesto-deploy-cf
       params:
-        DEPLOYMENT_NAME: pesto
-    - put: pesto-cf-deployment
-      params:
+        manifest: ci/winc-smoke-test-manifest/manifest.yml
+        stemcells:
+        - gcp-linux-stemcell/*.tgz
+        - gcp-windows-stemcell/*.tgz
+        releases:
+        - release-tarball/*.tgz
+        vars_files:
+        - cf-deployment/operations/tcp-routing-gcp.yml \
+        - cf-deployment/operations/windows-cell.yml \
+        - cf-deployment/operations/scale-to-one-az.yml \
+        - greenhouse-private/operations/scale-down-windows.yml \
+        - greenhouse-private/operations/secure-consul-agent.yml \
+        - greenhouse-private/pesto/vars.yml
         cleanup: true
-        manifest: generate-manifest/cf.yml
-        releases:
-        - created-cf-release/cf-*.tgz
-        stemcells:
-        - aws-stemcell/stemcell.tgz
-    - put: pesto-diego-deployment
+    - task: clean-up
+      file: ci/bosh-cleanup/task.yml
       params:
-        manifest: generate-manifest/diego.yml
-        releases:
-        - created-cf-release/cf-*.tgz
-        - diego-github-release/diego*.tgz
-        - diego-github-release/garden-runc-*.tgz
-        - diego-github-release/etcd*.tgz
-        - diego-github-release/cflinuxfs2-rootfs*.tgz
-        stemcells:
-        - aws-stemcell/stemcell.tgz
+        BOSH_CLIENT: {{PESTO_BOSH_CLIENT}}
+        BOSH_CLIENT_SECRET: {{PESTO_BOSH_CLIENT_SECRET}}
+        BOSH_ENVIRONMENT: {{PESTO_BOSH_ENVIRONMENT}}
+        BOSH_CA_CERT: {{PESTO_BOSH_CA_CERT}}
+    - task: wats
+      file: ci/run-wats/task.yml
+      params:
+        ADMIN_PASSWORD: {{PESTO_ADMIN_PASSWORD}}
+        input_mapping: {wats: wats-develop}
+        ADMIN_USER: admin
+        API: api.pesto.cf-app.com
+        APPS_DOMAIN: pesto.cf-app.com
+        NUM_WIN_CELLS: 1
+        SOCKET_ADDRESS_FOR_SECURITY_GROUP_TEST: 10.0.0.6:25555
+      ensure:
+        task: delete-deployment
+        file: ci/bosh-deld/task.yml
+        params:
+          BOSH_DEPLOYMENT: cf
+          BOSH_ENVIRONMENT: {{PESTO_BOSH_ENVIRONMENT}}
+          BOSH_CLIENT: {{PESTO_BOSH_CLIENT}}
+          BOSH_CLIENT_SECRET: {{PESTO_BOSH_CLIENT_SECRET}}
+          BOSH_CA_CERT: {{PESTO_BOSH_CA_CERT}}
+    - put: garden-windows-bosh-release-bucket-dev
+      params:
+        file: garden-windows-output/garden-windows-*.tgz
+    - task: merge-develop-to-master
+      input_mapping: { from-repo: wats, to-repo: wats-master }
+      file: ci/merge-repo/task.yml
+      input_mapping: { from-repo: wats-develop, to-repo: wats-master }
+      params:
+        FROM_BRANCH: develop
+    - put: wats-mergedback
+      params: { repository: merged-repo/to-repo }
     ensure:
       put: pesto-lock-pool
       params:
         release: pesto-lock-pool
-- name: pesto-standup-windows-cells
-  serial: true
-  plan:
-  - put: pesto-lock-pool
-    params:
-      acquire: true
-  - do:
-    - aggregate:
-      - get: wats
-      - get: diego-windows-artifacts
-        trigger: true
-      - get: garden-windows-artifacts
-        trigger: true
-      - get: greenhouse-ci
-      - get: cf-release
-        passed: [pesto-deploy-cf]
-      - get: diego-github-release
-        passed: [pesto-deploy-cf]
-    - task: extract-diego-artifacts
-      config:
-        platform: linux
-        image: docker:///pivotalgreenhouse/ruby
-        run:
-          path: bash
-          args:
-          - -c
-          - unzip -d diego-artifacts diego-windows-artifacts/*.zip
-        inputs:
-        - name: diego-windows-artifacts
-          path: ""
-        outputs:
-        - name: diego-artifacts
-          path: ""
-    - task: extract-garden-artifacts
-      config:
-        platform: linux
-        image: docker:///pivotalgreenhouse/ruby
-        run:
-          path: bash
-          args:
-          - -c
-          - unzip -d garden-artifacts garden-windows-artifacts/*.zip
-        inputs:
-        - name: garden-windows-artifacts
-          path: ""
-        outputs:
-        - name: garden-artifacts
-          path: ""
-    - put: garden-windows-msi-file
-      params:
-        file: garden-artifacts/output/GardenWindows*.msi
-    - put: garden-windows-setup-file
-      params:
-        file: garden-artifacts/output/setup*.ps1
-    - put: diego-windows-msi-file
-      params:
-        file: diego-artifacts/output/DiegoWindows*.msi
-    - put: diego-windows-cloudformation-template-file
-      params:
-        file: diego-artifacts/output/cloudformation*.json.template
-    - put: greenhouse-install-script-generator-file
-      params:
-        file: diego-artifacts/output/generate*.exe
-    - put: hakim
-      params:
-        file: diego-artifacts/output/hakim*.exe
-    - task: spiff-cloudformation-template
-      config:
-        platform: linux
-        image: docker:///pivotalgreenhouse/ruby
-        params:
-          AWS_ACCESS_KEY_ID: {{PESTO_BOSH_ACCESS_KEY_ID}}
-          AWS_SECRET_ACCESS_KEY: {{PESTO_BOSH_SECRET_ACCESS_KEY}}
-        run:
-          path: greenhouse-ci/scripts/spiff_cloudformation.rb
-          args: []
-        inputs:
-        - name: diego-windows-msi-file
-          path: ""
-        - name: diego-windows-cloudformation-template-file
-          path: ""
-        - name: greenhouse-install-script-generator-file
-          path: ""
-        - name: garden-windows-msi-file
-          path: ""
-        - name: garden-windows-setup-file
-          path: ""
-        - name: hakim
-          path: ""
-        - name: greenhouse-ci
-          path: ""
-        outputs:
-        - name: generated-cloudformation-template-file
-          path: ""
-    - task: deploy-msi
-      file: greenhouse-ci/tasks/deploy-msi.yml
-      params:
-        AWS_ACCESS_KEY_ID: {{PESTO_BOSH_ACCESS_KEY_ID}}
-        AWS_SECRET_ACCESS_KEY: {{PESTO_BOSH_SECRET_ACCESS_KEY}}
-        BOSH_HOST: bosh.pesto.cf-app.com
-        BOSH_PASSWORD: {{PESTO_BOSH_PASSWORD}}
-        BOSH_USER: {{PESTO_BOSH_USERNAME}}
-        CELL_NAME: windows_cell
-        CONTAINERIZER_PASSWORD: {{PESTO_CONTAINERIZER_PASSWORD}}
-        DESIRED_CAPACITY: "2"
-        KEY_PAIR: bosh
-        NAT_INSTANCE_ID: {{PESTO_NAT_INSTANCE_ID}}
-        SECURITY_GROUP: {{PESTO_SECURITY_GROUP}}
-        STACKNAME: windows-cells
-        SUBNET_CIDR: 10.10.100.0/24
-        VPC_ID: {{PESTO_VPC_ID}}
-      input_mapping:
-        diego-windows-cloudformation-template-file: generated-cloudformation-template-file
-    - task: wats
-      file: greenhouse-ci/run-wats/task.yml
-      input_mapping: {ci: greenhouse-ci}
-      attempts: 5
-      params:
-        ADMIN_PASSWORD: {{PESTO_CF_PASSWORD}}
-        ADMIN_USER: admin
-        API: api.pesto.cf-app.com
-        APPS_DOMAIN: pesto.cf-app.com
-        NUM_WIN_CELLS: "2"
-        SOCKET_ADDRESS_FOR_SECURITY_GROUP_TEST: 10.10.0.6:25555
-        CONSUL_MUTUAL_TLS: false
-    ensure:
-      do:
-      - put: pesto-lock-pool
-        params:
-          release: pesto-lock-pool
-      - task: delete-cloudformation-stack
-        file: greenhouse-ci/tasks/delete-cloudformation-stack.yml
-        params:
-          AWS_ACCESS_KEY_ID: {{PESTO_BOSH_ACCESS_KEY_ID}}
-          AWS_SECRET_ACCESS_KEY: {{PESTO_BOSH_SECRET_ACCESS_KEY}}
-          STACKNAME: windows-cells
-- name: create-greenhouse-release
-  plan:
-  - aggregate:
-    - get: greenhouse-ci
-    - get: diego-windows-release
-      params:
-        submodules: none
-    - get: diego-windows-msi-file
-      passed:
-      - pesto-standup-windows-cells
-      trigger: true
-    - get: garden-windows-msi-file
-      passed:
-      - pesto-standup-windows-cells
-      trigger: true
-    - get: garden-windows-setup-file
-      passed:
-      - pesto-standup-windows-cells
-    - get: greenhouse-install-script-generator-file
-      passed:
-      - pesto-standup-windows-cells
-    - get: hakim
-      passed:
-      - pesto-standup-windows-cells
-  - task: create-release
-    file: greenhouse-ci/tasks/create-release.yml
-    params:
-      GITHUB_TOKEN: {{GREENHOUSE_CI_ACCESS_TOKEN}}
-- name: bump-diego-submodules
-  serial: true
-  serial_groups:
-  - bump-diego-submodules
-  plan:
-  - aggregate:
-    - get: diego-release
-      trigger: true
-      params:
-        submodules: none
-    - get: cf-release
-      trigger: true
-      params:
-        submodules: none
-    - get: diego-windows-release
-      params:
-        submodules:
-        - diego-release
-        - loggregator
-    - get: greenhouse-ci
-  - task: bump-submodules
-    file: greenhouse-ci/tasks/bump-submodules.yml
-  - put: diego-windows-release
-    params:
-      repository: bumped-diego-windows-release
-      submodules: none
-- name: check-diego-release-job-templates
-  serial: true
-  plan:
-  - aggregate:
-    - get: diego-release
-      trigger: true
-      params:
-        submodules: none
-    - get: diego-windows-release
-      params:
-        submodules: none
-    - get: diego-windows-github-release
-    - get: greenhouse-ci
-  - task: check-templates
-    file: greenhouse-ci/tasks/check-templates.yml
-
 - name: bump-garden-windows-blob
   serial: true
   plan:
