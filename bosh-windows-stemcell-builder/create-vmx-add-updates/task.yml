@@ -17,14 +17,14 @@ run:
   - ci/bosh-windows-stemcell-builder/create-vmx-add-updates/run.ps1
 
 params:
-  AWS_ACCESS_KEY_ID:
-  AWS_SECRET_ACCESS_KEY:
+  AWS_ACCESS_KEY_ID: "minio"
+  AWS_SECRET_ACCESS_KEY: "minio123"
   AWS_REGION: us-east-1
 
-  ADMINISTRATOR_PASSWORD: replace-me
+  ADMINISTRATOR_PASSWORD: "Universe01"
 
-  INPUT_BUCKET: "bosh-windows-stemcell-vmx"
-  OUTPUT_BUCKET: "bosh-windows-stemcell-vmx"
+  INPUT_BUCKET: "pcf-concourse"
+  OUTPUT_BUCKET: "pcf-concourse"
   VMX_CACHE_DIR: "C:\\vmx-data"
   VERSION_DIR: ../version
 
