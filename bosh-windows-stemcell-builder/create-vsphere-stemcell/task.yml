@@ -6,7 +6,6 @@ inputs:
   - name: version
   - name: vmx-version
   - name: stemcell-builder
-  - name: windows-stemcell-dependencies
 outputs:
   - name: bosh-windows-stemcell
 
@@ -35,5 +34,3 @@ params:
 
   VERSION_DIR: ../version
   VMX_VERSION_DIR: ../vmx-version
-  STEMCELL_DEPS_DIR: ../windows-stemcell-dependencies
-
