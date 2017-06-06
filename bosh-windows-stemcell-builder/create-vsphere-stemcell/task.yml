@@ -3,6 +3,7 @@ platform: windows
 
 inputs:
   - name: ci
+  - name: version
   - name: vmx-version
   - name: stemcell-builder
 outputs:
